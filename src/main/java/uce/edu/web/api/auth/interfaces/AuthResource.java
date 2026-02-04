@@ -4,18 +4,17 @@ import java.time.Instant;
 import java.util.Set;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 import io.smallrye.jwt.build.Jwt;
 import jakarta.ws.rs.Produces;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
-import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.Response;
-import uce.edu.web.api.auth.entity.Usuario;
+import uce.edu.web.api.auth.entity.UsuarioDTO;
 
 @Path("/auth")
 public class AuthResource {
@@ -26,22 +25,31 @@ public class AuthResource {
     @ConfigProperty(name = "auth.token.ttl")
     long ttl;
 
+    @Inject
+    @RestClient
+    UsuarioClient usuarioClient;    
+
     @POST
     @Path("/login") // Cambiamos la ruta a /login
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public TokenResponse login(Usuario credenciales) { // Recibe el objeto Usuario desde Vue
+    public TokenResponse login(UsuarioDTO credenciales) { // Recibe el objeto Usuario desde Vue
 
-        // 1. Buscar el usuario en la base de datos por el nombre
-        Usuario userFound = Usuario.find("username", credenciales.username).firstResult();
+        System.out.println("Intentando login para: " + credenciales.username);
+            
+            UsuarioDTO userFound;
+            try {
+                userFound = usuarioClient.buscarPorNombre(credenciales.username);
+                System.out.println("Usuario encontrado en Matrícula: " + userFound.username);
+            } catch (Exception e) {
+                System.out.println("Error llamando a Matrícula: " + e.getMessage());
+                throw new WebApplicationException("Error de conexión", 401);
+            }
 
-        // 2. Validar credenciales (Comparación simple para el ejercicio)
-        if (userFound == null || !userFound.password.equals(credenciales.password)) {
-            throw new WebApplicationException(
-                "Usuario o contraseña incorrectos", 
-                Response.Status.UNAUTHORIZED
-            );
-        }
+            if (!userFound.password.equals(credenciales.password)) {
+                System.out.println("Contraseña no coincide. DB: " + userFound.password + " Form: " + credenciales.password);
+                throw new WebApplicationException("Password incorrecto", 401);
+            }
 
         // 3. Si todo está bien, generamos el Token con los datos de la DB
         Instant now = Instant.now();
